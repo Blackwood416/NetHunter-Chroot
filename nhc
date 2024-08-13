@@ -1,0 +1,116 @@
+#!/bin/bash
+KALIPATH=/data/data/com.termux/files/home/kali-arm64
+TERMUX_PREFIX=/data/data/com.termux/files/usr
+SCRIPT_VERSION="0.0.1"
+KALI_VERSION="NetHunter 2024.2"
+VERSION="Script Version: $SCRIPT_VERSION\nKali Version: $KALI_VERSION"
+KALI_INST_DIR=/data/dat/com.termux/files/home/
+KALI_ROOTFS_NAME=kali-arm64
+FG_RED=$(tput setaf 1)
+FG_GREEN=$(tput setaf 2)
+FG_ORANGE=$(tput setaf 3)
+FG_DEFAULT=$(tput setaf 9)
+#while getopts ":i:p:vxVh" opt; do
+while getopts ":vxVh" opt; do
+  case $opt in
+:<<TODO
+    i)
+       case $OPTARG in
+	full)
+		echo Full
+		wget https://kali.download/nethunter-images/kali-2024.2/nethunter-2024.2-generic-arm64-kalifs-full.zip
+		exit 0
+	;;
+	minimal)
+		echo Minimal
+		wget https://kali.download/nethunter-images/kali-2024.2/nethunter-2024.2-generic-arm64-kalifs-minimal.zip
+		exit 0
+	;;
+	?)
+		echo "Invalid argument, the argument should be 'full' or 'minimal'"
+		exit 1
+	;;
+       esac
+    ;;
+    p)
+       if [ -d $OPTARG ];then
+	KALI_INST_DIR=$OPTARG
+       else
+	echo "Directory does not exist! Please use a valid path."
+       exit 1
+       fi
+    ;;
+TODO
+    v) VNC=true
+    ;;
+    x) X11=true
+	su -c "touch $KALIPATH/tmp/.x"
+    ;;
+    V) echo $VERSION
+       exit 0
+    ;;
+    h) echo 'Usage: nhc [OPTION]'
+       echo '  -i [full | minimal]   Install a kali nethunter chroot container of full or minimal version'
+       echo '  -p PATH		Specific the installation path of container before installing'
+       echo '  -h 			Show this help information'
+       echo '  -v 			Start chroot container with VNC service'
+       echo '  -x 			Start chroot container with X11 service'
+       echo '  -V 			Show version information'
+       exit 0
+    ;;
+    ?)  echo "Invalid Option '-$OPTARG'"
+	if [ $OPTARG == 'i' ];then
+		echo "Option '-i' needs an argument"
+	fi
+	echo "Try 'kali -h' for more information" >&2
+        exit 1
+    ;;
+  esac
+done
+su -c "rm -f $KALIPATH/tmp/.v"
+su -c "rm -f $KALIPATH/tmp/.x"
+su -c "pkill dwm"
+echo "$FG_GREEN[*] Checking /data privilege..."
+su -c "mount -o remount,dev,suid /data"
+echo '[*] Checking /dev/shm existence...'
+if [ -d /dev/shm ]; then
+	echo "$FG_GREEN[*] Existed. Skipping...$FG_DEFAULT"
+else
+	echo "$FG_RED[x] None! Creating...$FG_DEFAULT"
+	su -c "mkdir /dev/shm"
+fi
+echo "$FG_GREEN[*] Mounting /dev/shm..."
+su -c "mount -t tmpfs -o size=256M /dev/shm $KALIPATH/dev/shm"
+echo '[*] Mounting /dev...'
+su -c "mount -o bind /dev $KALIPATH/dev"
+echo '[*] Mounting /dev/pts...'
+su -c "mount -t devpts devpts $KALIPATH/dev/pts"
+echo '[*] Mounting /sys...'
+su -c "mount -o bind /sys $KALIPATH/sys"
+echo '[*] Mounting /proc...'
+su -c "mount -o bind /proc $KALIPATH/proc"
+echo '[*] Mounting /tmp...'
+su -c "mount -o bind $TERMUX_PREFIX/tmp $KALIPATH/tmp"
+echo '[*] Mounting internal storage...'
+su -c "mount -o bind /data/media/0 $KALIPATH/sdcard"
+if [ $X11 ];then
+pkill -f "/system/bin/app_process -Xnoimage-dex2oat / com.termux.x11.Loader :0 -ac"
+echo '[*] Launching X11 service...'
+su -c "touch $KALIPATH/tmp/.x"
+nohup termux-x11 :0 -ac >/dev/null 2>&1 &
+nohup am start -n com.termux.x11/com.termux.x11.MainActivity >/dev/null 2>&1 &
+fi
+if [ $VNC ];then
+echo '[*] Launching VNC service...'
+su -c "touch $KALIPATH/tmp/.v"
+nohup am start -n com.gaurav.avnc/com.gaurav.avnc.StartupActivity >/dev/null 2>&1 &
+fi
+echo '[*] Launching pulseaudio service...'
+pulseaudio --start --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" --exit-idle-time=-1
+echo '[*] Loading audio module...'
+pacmd load-module module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1
+su -c "chroot $KALIPATH /bin/su - root"
+su -c "umount -f $KALIPATH/dev/pts"
+su -c "umount -f $KALIPATH/dev"
+su -c "umount -f $KALIPATH/sys"
+su -c "umount -f $KALIPATH/proc"
